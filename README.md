@@ -1,6 +1,6 @@
 # @mapleruf/tiptap-score
 
-Tiptap extension + BubbleMenu UI for score editing with VexFlow.
+Tiptap extension + BubbleMenu UI for score editing with VexFlow.  
 自分で使うようなのでヒソヒソとアップデートしていきます。
 
 ## Install
