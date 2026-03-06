@@ -35,13 +35,3 @@ return (
   </>
 )
 ```
-
-## Publish
-
-```bash
-cd packages/tiptap-score
-npm version patch
-npm publish
-```
-
-Package is configured for GitHub Packages registry via `publishConfig.registry`.
