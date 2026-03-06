@@ -53,15 +53,26 @@ var MIN_DISPLAY_ZOOM = 0.72;
 var ZOOM_BASE_MEASURE_WIDTH = MIN_MEASURE_WIDTH + 80;
 var KEY_SIG_ORDER = ["C", "G", "D", "A", "E", "B", "F#", "C#", "F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"];
 var durationTokens = /* @__PURE__ */ new Set(["w", "h", "q", "8", "16", "32"]);
-var parseTimeSig = (value) => {
+var SUPPORTED_BEAT_VALUES = /* @__PURE__ */ new Set([1, 2, 4, 8, 16, 32]);
+var parseSupportedTimeSig = (value) => {
   const match = value.match(/^(\d+)\s*\/\s*(\d+)$/);
-  if (!match) return { numBeats: 4, beatValue: 4 };
+  if (!match) return null;
   const numBeats = Number(match[1]);
   const beatValue = Number(match[2]);
-  if (!Number.isFinite(numBeats) || !Number.isFinite(beatValue)) {
-    return { numBeats: 4, beatValue: 4 };
-  }
+  if (!Number.isFinite(numBeats) || !Number.isFinite(beatValue)) return null;
+  if (numBeats <= 0 || beatValue <= 0) return null;
+  if (!SUPPORTED_BEAT_VALUES.has(beatValue)) return null;
   return { numBeats, beatValue };
+};
+var parseTimeSig = (value) => {
+  const parsed = parseSupportedTimeSig(value);
+  if (parsed) return parsed;
+  return { numBeats: 4, beatValue: 4 };
+};
+var normalizeRenderableTimeSig = (value) => {
+  const parsed = parseSupportedTimeSig(value);
+  if (!parsed) return DEFAULT_TIME_SIG;
+  return `${parsed.numBeats}/${parsed.beatValue}`;
 };
 var getKeySigAccidentalCount = (keySig) => {
   const index = KEY_SIG_ORDER.indexOf(keySig || "C");
@@ -176,7 +187,7 @@ var splitBeatsToDurations = (beats, beatValue) => {
     return {
       token: def.token,
       dots,
-      beats: def.quarterBeats * (4 / beatValue) * dotMultiplier
+      beats: def.quarterBeats * (beatValue / 4) * dotMultiplier
     };
   })).sort((a, b) => b.beats - a.beats);
   const parts = [];
@@ -501,6 +512,7 @@ var renderScoreSvg = (container, attrs, selectedNotes = null) => {
   const scaledTailPadding = Math.max(20, Math.floor(40 * DRAW_SCALE));
   const leftInset = attrs.staff === "grand" ? Math.max(16, scaledPadding * 2) : scaledPadding;
   const { numBeats, beatValue } = parseTimeSig(attrs.timeSig || DEFAULT_TIME_SIG);
+  const renderableTimeSig = normalizeRenderableTimeSig(attrs.timeSig || DEFAULT_TIME_SIG);
   const singleStaffCount = attrs.staff === "single" ? Math.max(1, Math.min(4, Number(attrs.singleStaffCount || 1))) : 1;
   const singleStaffSources = [attrs.notes, attrs.singleNotes2, attrs.singleNotes3, attrs.singleNotes4];
   const singleStaffClefs = [attrs.singleClef, attrs.singleClef2, attrs.singleClef3, attrs.singleClef4];
@@ -565,12 +577,9 @@ var renderScoreSvg = (container, attrs, selectedNotes = null) => {
   const zoomBaseStaveWidth = Math.max(120, MAX_AUTO_MEASURES * ZOOM_BASE_MEASURE_WIDTH);
   const zoomBaseScaledWidth = Math.max(280, Math.ceil(zoomBaseStaveWidth + leftInset + scaledPadding));
   const targetZoom = Math.max(MIN_DISPLAY_ZOOM, Math.min(1, viewportWidth / zoomBaseScaledWidth));
-  const zoomKey = `${attrs.timeSig}`;
   const prevZoom = Number(container.dataset.fixedZoom || 0);
-  const prevZoomKey = container.dataset.zoomKey || "";
-  const displayZoom = prevZoom > 0 && prevZoomKey === zoomKey ? prevZoom : targetZoom;
+  const displayZoom = prevZoom > 0 ? Math.min(prevZoom, targetZoom) : targetZoom;
   container.dataset.fixedZoom = String(displayZoom);
-  container.dataset.zoomKey = zoomKey;
   container.style.setProperty("--score-zoom", String(displayZoom));
   const renderer = new import_vexflow.Renderer(container, import_vexflow.Renderer.Backends.SVG);
   const height = attrs.staff === "grand" ? scaledStaffHeight * 2 + scaledTailPadding : scaledStaffHeight * singleStaffCount + scaledTailPadding;
@@ -579,13 +588,13 @@ var renderScoreSvg = (container, attrs, selectedNotes = null) => {
   const stave = new import_vexflow.Stave(leftInset, scaledTopY, staveWidth);
   stave.addClef(attrs.staff === "single" ? attrs.singleClef : attrs.upperClef);
   stave.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG);
-  stave.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG);
+  stave.addTimeSignature(renderableTimeSig);
   if (attrs.staff === "grand") {
     const lowerY = scaledTopY + scaledStaffHeight;
     const lowerStave = new import_vexflow.Stave(leftInset, lowerY, staveWidth);
     lowerStave.addClef(attrs.lowerClef);
     lowerStave.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG);
-    lowerStave.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG);
+    lowerStave.addTimeSignature(renderableTimeSig);
     import_vexflow.Stave.formatBegModifiers([stave, lowerStave]);
     stave.setContext(context).draw();
     lowerStave.setContext(context).draw();
@@ -714,7 +723,7 @@ var renderScoreSvg = (container, attrs, selectedNotes = null) => {
       const staff = new import_vexflow.Stave(leftInset, staffY, staveWidth);
       staff.addClef(singleStaffClefs[i] || attrs.singleClef);
       staff.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG);
-      staff.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG);
+      staff.addTimeSignature(renderableTimeSig);
       staff.setContext(context).draw();
       return staff;
     });
@@ -1158,7 +1167,7 @@ var splitBeatsIntoDurations = (beats, beatValue) => {
     return {
       token: def.token,
       dots,
-      beats: def.quarterBeats * (4 / beatValue) * dotMultiplier
+      beats: def.quarterBeats * (beatValue / 4) * dotMultiplier
     };
   })).sort((a, b) => b.beats - a.beats);
   while (remaining > 1e-4) {

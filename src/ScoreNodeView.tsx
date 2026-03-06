@@ -250,7 +250,7 @@ const splitBeatsIntoDurations = (beats: number, beatValue: number) => {
     return {
       token: def.token,
       dots,
-      beats: def.quarterBeats * (4 / beatValue) * dotMultiplier,
+      beats: def.quarterBeats * (beatValue / 4) * dotMultiplier,
     }
   })).sort((a, b) => b.beats - a.beats)
   while (remaining > 0.0001) {

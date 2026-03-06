@@ -51,16 +51,29 @@ const ZOOM_BASE_MEASURE_WIDTH = MIN_MEASURE_WIDTH + 80
 const KEY_SIG_ORDER = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'] as const
 
 const durationTokens = new Set(['w', 'h', 'q', '8', '16', '32'])
+const SUPPORTED_BEAT_VALUES = new Set([1, 2, 4, 8, 16, 32])
 
-export const parseTimeSig = (value: string) => {
+const parseSupportedTimeSig = (value: string) => {
   const match = value.match(/^(\d+)\s*\/\s*(\d+)$/)
-  if (!match) return { numBeats: 4, beatValue: 4 }
+  if (!match) return null
   const numBeats = Number(match[1])
   const beatValue = Number(match[2])
-  if (!Number.isFinite(numBeats) || !Number.isFinite(beatValue)) {
-    return { numBeats: 4, beatValue: 4 }
-  }
+  if (!Number.isFinite(numBeats) || !Number.isFinite(beatValue)) return null
+  if (numBeats <= 0 || beatValue <= 0) return null
+  if (!SUPPORTED_BEAT_VALUES.has(beatValue)) return null
   return { numBeats, beatValue }
+}
+
+export const parseTimeSig = (value: string) => {
+  const parsed = parseSupportedTimeSig(value)
+  if (parsed) return parsed
+  return { numBeats: 4, beatValue: 4 }
+}
+
+const normalizeRenderableTimeSig = (value: string) => {
+  const parsed = parseSupportedTimeSig(value)
+  if (!parsed) return DEFAULT_TIME_SIG
+  return `${parsed.numBeats}/${parsed.beatValue}`
 }
 
 const getKeySigAccidentalCount = (keySig: string) => {
@@ -207,7 +220,7 @@ const splitBeatsToDurations = (beats: number, beatValue: number) => {
     return {
       token: def.token,
       dots,
-      beats: def.quarterBeats * (4 / beatValue) * dotMultiplier,
+      beats: def.quarterBeats * (beatValue / 4) * dotMultiplier,
     }
   })).sort((a, b) => b.beats - a.beats)
 
@@ -613,6 +626,7 @@ export const renderScoreSvg = (
     ? Math.max(16, scaledPadding * 2)
     : scaledPadding
   const { numBeats, beatValue } = parseTimeSig(attrs.timeSig || DEFAULT_TIME_SIG)
+  const renderableTimeSig = normalizeRenderableTimeSig(attrs.timeSig || DEFAULT_TIME_SIG)
 
   const singleStaffCount = attrs.staff === 'single'
     ? Math.max(1, Math.min(4, Number(attrs.singleStaffCount || 1)))
@@ -693,12 +707,9 @@ export const renderScoreSvg = (
   const zoomBaseStaveWidth = Math.max(120, MAX_AUTO_MEASURES * ZOOM_BASE_MEASURE_WIDTH)
   const zoomBaseScaledWidth = Math.max(280, Math.ceil(zoomBaseStaveWidth + leftInset + scaledPadding))
   const targetZoom = Math.max(MIN_DISPLAY_ZOOM, Math.min(1, viewportWidth / zoomBaseScaledWidth))
-  const zoomKey = `${attrs.timeSig}`
   const prevZoom = Number(container.dataset.fixedZoom || 0)
-  const prevZoomKey = container.dataset.zoomKey || ''
-  const displayZoom = prevZoom > 0 && prevZoomKey === zoomKey ? prevZoom : targetZoom
+  const displayZoom = prevZoom > 0 ? Math.min(prevZoom, targetZoom) : targetZoom
   container.dataset.fixedZoom = String(displayZoom)
-  container.dataset.zoomKey = zoomKey
   container.style.setProperty('--score-zoom', String(displayZoom))
 
   const renderer = new Renderer(container, Renderer.Backends.SVG)
@@ -710,13 +721,13 @@ export const renderScoreSvg = (
   const stave = new Stave(leftInset, scaledTopY, staveWidth)
   stave.addClef(attrs.staff === 'single' ? attrs.singleClef : attrs.upperClef)
   stave.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG)
-  stave.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG)
+  stave.addTimeSignature(renderableTimeSig)
   if (attrs.staff === 'grand') {
     const lowerY = scaledTopY + scaledStaffHeight
     const lowerStave = new Stave(leftInset, lowerY, staveWidth)
     lowerStave.addClef(attrs.lowerClef)
     lowerStave.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG)
-    lowerStave.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG)
+    lowerStave.addTimeSignature(renderableTimeSig)
     Stave.formatBegModifiers([stave, lowerStave])
     stave.setContext(context).draw()
     lowerStave.setContext(context).draw()
@@ -852,7 +863,7 @@ export const renderScoreSvg = (
       const staff = new Stave(leftInset, staffY, staveWidth)
       staff.addClef(singleStaffClefs[i] || attrs.singleClef)
       staff.addKeySignature(attrs.keySig || DEFAULT_KEY_SIG)
-      staff.addTimeSignature(attrs.timeSig || DEFAULT_TIME_SIG)
+      staff.addTimeSignature(renderableTimeSig)
       staff.setContext(context).draw()
       return staff
     })
