@@ -1,6 +1,6 @@
 {
   "name": "@mapleruf/tiptap-score",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tiptap - Music Score Extension powered by VexFlow",
   "license": "MIT",
   "main": "dist/index.js",
