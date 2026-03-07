@@ -1,5 +1,3 @@
-# @mapleruf/tiptap-score
-
 Tiptap 上で小さい譜面を書くための Extension。  
 自分で使うようなのでヒソヒソとアップデートしていきます。
 
