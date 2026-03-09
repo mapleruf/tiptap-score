@@ -42,16 +42,11 @@ return (
 - delete ... 選択中の音符を削除
 
 ### 譜面の変更
-<img width="799" height="314" alt="image" src="https://github.com/user-attachments/assets/a0eaab22-f0cd-4737-bee6-79b408260430" />
-
 キャンバスを右クリックすることで、譜面そのものに関しての見た目などを変更することができます。
 
 - 拍子 ... 拍子の設定 / 変更
 - 調号 ... 楽譜の調を設定 / 変更
 - 譜表 ... 単不評と大譜表を切り替え
-- 段数 ... 単譜表の場合にのみ設定可能。最大で４段まで五戦を増やせます。
 
 ### 音部記号の変更
-<img width="805" height="228" alt="image" src="https://github.com/user-attachments/assets/abdf073f-8c78-46da-9a1b-c02b67e8c1e3" />
-
 単譜表である場合、音部記号をクリックすることで音部記号を変更することが出来ます。
