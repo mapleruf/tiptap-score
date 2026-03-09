@@ -4,6 +4,7 @@ import { ReactNodeViewRenderer } from '@tiptap/react'
 
 import ScoreNodeView from './ScoreNodeView'
 import { defaultScoreAttrs, type ScoreAttrs } from './scoreUtils'
+import { defaultScoreExtraFeatures, resolveScoreExtraFeatures, type ScoreExtraFeatures } from './scoreFeatureFlags'
 
 const isNodeSelectionLike = (selection: unknown) => {
   if (!selection || typeof selection !== 'object') return false
@@ -21,13 +22,23 @@ const getNotesFieldByTarget = (target: ScoreAttrs['selectedTarget']) => {
   return null
 }
 
-const ScoreExtension = Node.create({
+export type ScoreExtensionOptions = {
+  extraFeatures?: Partial<ScoreExtraFeatures>
+}
+
+const ScoreExtension = Node.create<ScoreExtensionOptions>({
   name: 'score',
 
   group: 'block',
   atom: true,
   selectable: true,
   draggable: true,
+
+  addOptions() {
+    return {
+      extraFeatures: defaultScoreExtraFeatures,
+    }
+  },
 
   addAttributes() {
     return {
@@ -267,13 +278,19 @@ const ScoreExtension = Node.create({
   },
 
   addInputRules() {
+    const extraFeatures = resolveScoreExtraFeatures(this.options.extraFeatures)
+    const initialAttrs: ScoreAttrs = {
+      ...defaultScoreAttrs,
+      singleStaffCount: extraFeatures.multiSingleStaff ? defaultScoreAttrs.singleStaffCount : 1,
+      inputDots: extraFeatures.doubleDotted ? defaultScoreAttrs.inputDots : Math.min(1, defaultScoreAttrs.inputDots) as ScoreAttrs['inputDots'],
+    }
     return [
       new InputRule({
         find: /\/score$/,
         handler: ({ range, commands }) => {
           commands.insertContentAt(
             { from: range.from, to: range.to },
-            { type: this.name, attrs: defaultScoreAttrs },
+            { type: this.name, attrs: initialAttrs },
             { updateSelection: false },
           )
         },

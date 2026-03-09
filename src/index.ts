@@ -1,4 +1,6 @@
 export { default as ScoreExtension } from './ScoreExtension'
 export { default as ScoreBubbleMenu } from './ScoreBubbleMenu'
 export type { ScoreAttrs, StaffType, NoteClef, SelectedScoreNotes } from './scoreUtils'
+export type { ScoreExtraFeatures } from './scoreFeatureFlags'
+export type { ScoreExtensionOptions } from './ScoreExtension'
 export { defaultScoreAttrs, parseTimeSig } from './scoreUtils'

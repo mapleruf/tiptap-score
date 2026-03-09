@@ -15,6 +15,8 @@ import {
   durationTokenToBeatsWithTuplet,
   MAX_AUTO_MEASURES,
 } from './scoreUtils'
+import { resolveScoreExtraFeatures } from './scoreFeatureFlags'
+import type { ScoreExtensionOptions } from './ScoreExtension'
 
 declare global {
   interface Window {
@@ -407,7 +409,10 @@ const findNearestTokenIndexFromRendered = ({
   return nearestTokenIdx
 }
 
-const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
+const ScoreNodeView = ({ node, editor, getPos, extension }: NodeViewProps) => {
+  const extraFeatures = resolveScoreExtraFeatures((extension.options as ScoreExtensionOptions | undefined)?.extraFeatures)
+  const allowMultiSingleStaff = extraFeatures.multiSingleStaff
+  const allowDoubleDotted = extraFeatures.doubleDotted
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{
@@ -434,6 +439,12 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
   } | null>(null)
   const [settingsMenu, setSettingsMenu] = useState<{ left: number, top: number } | null>(null)
   const attrs = node.attrs as ScoreAttrs
+  const normalizedSingleStaffCount = allowMultiSingleStaff
+    ? Math.max(1, Math.min(4, Number(attrs.singleStaffCount || 1)))
+    : 1
+  const normalizedInputDots = allowDoubleDotted
+    ? Math.max(0, Math.min(2, Number(attrs.inputDots ?? 0)))
+    : Math.max(0, Math.min(1, Number(attrs.inputDots ?? 0)))
   const canDragNode = !clefMenu
     && !settingsMenu
     && !attrs.selectedTarget
@@ -477,6 +488,12 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
 
   const updateScoreAttrsFromMenu = (partial: Partial<ScoreAttrs>) => {
     const next: Partial<ScoreAttrs> = { ...partial }
+    if (!allowMultiSingleStaff) {
+      next.singleStaffCount = 1
+    }
+    if (!allowDoubleDotted && next.inputDots != null) {
+      next.inputDots = Math.min(1, Number(next.inputDots)) as ScoreAttrs['inputDots']
+    }
     if (next.staff === 'grand' && attrs.staff === 'single' && Number(attrs.singleStaffCount || 1) >= 2) {
       next.staff = 'single'
     }
@@ -506,6 +523,19 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
     }
     updateNodeAttrs(next)
   }
+
+  useEffect(() => {
+    const patch: Partial<ScoreAttrs> = {}
+    if (!allowMultiSingleStaff && Number(attrs.singleStaffCount || 1) !== 1) {
+      patch.singleStaffCount = 1
+    }
+    if (!allowDoubleDotted && Number(attrs.inputDots ?? 0) > 1) {
+      patch.inputDots = 1
+    }
+    if (Object.keys(patch).length > 0) {
+      updateNodeAttrs(patch)
+    }
+  }, [allowDoubleDotted, allowMultiSingleStaff, attrs.inputDots, attrs.singleStaffCount])
 
   useEffect(() => {
     const container = canvasRef.current
@@ -539,7 +569,11 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
     if (!container) return
     const { errors: renderErrors } = renderScoreSvg(
       container,
-      attrs,
+      {
+        ...attrs,
+        singleStaffCount: normalizedSingleStaffCount as ScoreAttrs['singleStaffCount'],
+        inputDots: normalizedInputDots as ScoreAttrs['inputDots'],
+      },
       selectedNotes,
     )
     setErrors(renderErrors)
@@ -821,7 +855,7 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
     )
     const accidental = attrs.inputAccidental || ''
     const duration = attrs.inputDuration || 'q'
-    const dots = Number(attrs.inputDots ?? 0) as 0 | 1 | 2
+    const dots = normalizedInputDots as 0 | 1 | 2
     const tuplet = Boolean(attrs.inputTuplet)
     const dotSuffix = '.'.repeat(dots)
     const inputMode = (attrs.inputMode as ScoreAttrs['inputMode']) || 'note'
@@ -1679,18 +1713,18 @@ const ScoreNodeView = ({ node, editor, getPos }: NodeViewProps) => {
               <span>譜表</span>
               <select
                 value={attrs.staff}
-                disabled={attrs.staff === 'single' && Number(attrs.singleStaffCount || 1) >= 2}
+                disabled={attrs.staff === 'single' && normalizedSingleStaffCount >= 2}
                 onChange={(event) => updateScoreAttrsFromMenu({ staff: event.target.value as ScoreAttrs['staff'] })}
               >
                 <option value="single">単譜表</option>
                 <option value="grand">大譜表</option>
               </select>
             </label>
-            {attrs.staff === 'single' && (
+            {attrs.staff === 'single' && allowMultiSingleStaff && (
               <label>
                 <span>段数</span>
                 <select
-                  value={String(attrs.singleStaffCount || 1)}
+                  value={String(normalizedSingleStaffCount)}
                   onChange={(event) => updateScoreAttrsFromMenu({ singleStaffCount: Number(event.target.value) as ScoreAttrs['singleStaffCount'] })}
                 >
                   <option value="1">1段</option>

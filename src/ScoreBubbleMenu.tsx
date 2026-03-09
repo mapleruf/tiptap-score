@@ -4,6 +4,8 @@ import { NodeSelection } from '@tiptap/pm/state'
 import { useEffect, useState } from 'react'
 
 import type { ScoreAttrs } from './scoreUtils'
+import { resolveScoreExtraFeatures } from './scoreFeatureFlags'
+import type { ScoreExtensionOptions } from './ScoreExtension'
 
 declare global {
   interface Window {
@@ -165,10 +167,20 @@ const ScoreBubbleMenu = ({ editor }: { editor: Editor | null }) => {
 
 
   if (!editor) return null
+  const scoreExtension = editor.extensionManager.extensions.find((ext) => ext.name === 'score')
+  const extraFeatures = resolveScoreExtraFeatures((scoreExtension?.options as ScoreExtensionOptions | undefined)?.extraFeatures)
+  const allowDoubleDotted = extraFeatures.doubleDotted
 
   const updateAttrs = (next: Partial<ScoreAttrs>) => {
     editor.commands.updateAttributes('score', next)
   }
+
+  useEffect(() => {
+    if (!attrs) return
+    if (allowDoubleDotted) return
+    if (Number(attrs.inputDots ?? 0) <= 1) return
+    updateAttrs({ inputDots: 1 })
+  }, [allowDoubleDotted, attrs?.inputDots])
 
   const getSelectedTokens = (currentAttrs: ScoreAttrs) => {
     if (!currentAttrs.selectedTarget) return null
@@ -277,17 +289,22 @@ const ScoreBubbleMenu = ({ editor }: { editor: Editor | null }) => {
                       <option value="16">16分音符</option>
                     </select>
                   </label>
-                  <label>
-                    <span>付点</span>
-                    <select
-                      value={String(attrs.inputDots)}
-                      onChange={(event) => updateAttrs({ inputDots: Number(event.target.value) as ScoreAttrs['inputDots'] })}
-                    >
-                      <option value="0">なし</option>
-                      <option value="1">付点</option>
-                      <option value="2">複付点</option>
-                    </select>
-                  </label>
+                <label>
+                  <span>付点</span>
+                  <select
+                    value={String(allowDoubleDotted ? attrs.inputDots : Math.min(1, Number(attrs.inputDots ?? 0)))}
+                    onChange={(event) => updateAttrs({
+                      inputDots: Math.min(
+                        allowDoubleDotted ? 2 : 1,
+                        Number(event.target.value),
+                      ) as ScoreAttrs['inputDots'],
+                    })}
+                  >
+                    <option value="0">なし</option>
+                    <option value="1">付点</option>
+                    {allowDoubleDotted && <option value="2">複付点</option>}
+                  </select>
+                </label>
                 </div>
                 <div className="score-bubble__row score-bubble__row--selected-secondary">
                   <label>
@@ -324,7 +341,7 @@ const ScoreBubbleMenu = ({ editor }: { editor: Editor | null }) => {
             const mode: ScoreAttrs['inputMode'] = restMatch ? 'rest' : 'note'
             const duration = restMatch?.[1] ?? noteMatch?.[4] ?? attrs.inputDuration
             const isTuplet = (restMatch?.[2] ?? noteMatch?.[5] ?? '') === 't'
-            const dots = (restMatch?.[3] ?? noteMatch?.[6] ?? '').length
+            const dots = Math.min(allowDoubleDotted ? 2 : 1, (restMatch?.[3] ?? noteMatch?.[6] ?? '').length)
             const accidental = noteMatch?.[2] ?? ''
             return (
               <div className="score-bubble__stack">
@@ -379,7 +396,7 @@ const ScoreBubbleMenu = ({ editor }: { editor: Editor | null }) => {
                   <select
                     value={String(dots)}
                     onChange={(event) => {
-                      const nextDots = Number(event.target.value)
+                      const nextDots = Math.min(allowDoubleDotted ? 2 : 1, Number(event.target.value))
                       const dotSuffix = '.'.repeat(nextDots)
                       updateSelectedToken(attrs, (token) => {
                         const note = token.match(/^([a-gA-G])([#b]?)(\d)\/(w|h|q|8|16|32)(t?)(\.{0,2})(~?)$/)
@@ -392,7 +409,7 @@ const ScoreBubbleMenu = ({ editor }: { editor: Editor | null }) => {
                   >
                     <option value="0">なし</option>
                     <option value="1">付点</option>
-                    <option value="2">複付点</option>
+                    {allowDoubleDotted && <option value="2">複付点</option>}
                   </select>
                 </label>
                 </div>

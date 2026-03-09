@@ -978,6 +978,16 @@ var isYWithinStaff = (y, staffTopY, lineSpacing, extraSteps = 8) => {
   return y >= staffTopY - padding && y <= staffBottomY + padding;
 };
 
+// src/scoreFeatureFlags.ts
+var defaultScoreExtraFeatures = {
+  multiSingleStaff: false,
+  doubleDotted: false
+};
+var resolveScoreExtraFeatures = (input) => ({
+  multiSingleStaff: Boolean(input?.multiSingleStaff),
+  doubleDotted: Boolean(input?.doubleDotted)
+});
+
 // src/ScoreNodeView.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var SINGLE_TARGETS = ["single", "single2", "single3", "single4"];
@@ -1292,7 +1302,10 @@ var findNearestTokenIndexFromRendered = ({
   }
   return nearestTokenIdx;
 };
-var ScoreNodeView = ({ node, editor, getPos }) => {
+var ScoreNodeView = ({ node, editor, getPos, extension }) => {
+  const extraFeatures = resolveScoreExtraFeatures(extension.options?.extraFeatures);
+  const allowMultiSingleStaff = extraFeatures.multiSingleStaff;
+  const allowDoubleDotted = extraFeatures.doubleDotted;
   const containerRef = (0, import_react2.useRef)(null);
   const canvasRef = (0, import_react2.useRef)(null);
   const dragRef = (0, import_react2.useRef)(null);
@@ -1309,6 +1322,8 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
   const [clefMenu, setClefMenu] = (0, import_react2.useState)(null);
   const [settingsMenu, setSettingsMenu] = (0, import_react2.useState)(null);
   const attrs = node.attrs;
+  const normalizedSingleStaffCount = allowMultiSingleStaff ? Math.max(1, Math.min(4, Number(attrs.singleStaffCount || 1))) : 1;
+  const normalizedInputDots = allowDoubleDotted ? Math.max(0, Math.min(2, Number(attrs.inputDots ?? 0))) : Math.max(0, Math.min(1, Number(attrs.inputDots ?? 0)));
   const canDragNode = !clefMenu && !settingsMenu && !attrs.selectedTarget && (attrs.selectedIndices?.length ?? 0) === 0 && attrs.selectedIndex < 0;
   const canDragByCursor = canDragNode && cursorMode !== "insert";
   const selectedNotes = (0, import_react2.useMemo)(() => {
@@ -1344,6 +1359,12 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
   };
   const updateScoreAttrsFromMenu = (partial) => {
     const next = { ...partial };
+    if (!allowMultiSingleStaff) {
+      next.singleStaffCount = 1;
+    }
+    if (!allowDoubleDotted && next.inputDots != null) {
+      next.inputDots = Math.min(1, Number(next.inputDots));
+    }
     if (next.staff === "grand" && attrs.staff === "single" && Number(attrs.singleStaffCount || 1) >= 2) {
       next.staff = "single";
     }
@@ -1374,6 +1395,18 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
     updateNodeAttrs(next);
   };
   (0, import_react2.useEffect)(() => {
+    const patch = {};
+    if (!allowMultiSingleStaff && Number(attrs.singleStaffCount || 1) !== 1) {
+      patch.singleStaffCount = 1;
+    }
+    if (!allowDoubleDotted && Number(attrs.inputDots ?? 0) > 1) {
+      patch.inputDots = 1;
+    }
+    if (Object.keys(patch).length > 0) {
+      updateNodeAttrs(patch);
+    }
+  }, [allowDoubleDotted, allowMultiSingleStaff, attrs.inputDots, attrs.singleStaffCount]);
+  (0, import_react2.useEffect)(() => {
     const container = canvasRef.current;
     if (!container) return void 0;
     const rafId = window.requestAnimationFrame(() => {
@@ -1400,7 +1433,11 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
     if (!container) return;
     const { errors: renderErrors } = renderScoreSvg(
       container,
-      attrs,
+      {
+        ...attrs,
+        singleStaffCount: normalizedSingleStaffCount,
+        inputDots: normalizedInputDots
+      },
       selectedNotes
     );
     setErrors(renderErrors);
@@ -1641,7 +1678,7 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
     );
     const accidental = attrs.inputAccidental || "";
     const duration = attrs.inputDuration || "q";
-    const dots = Number(attrs.inputDots ?? 0);
+    const dots = normalizedInputDots;
     const tuplet = Boolean(attrs.inputTuplet);
     const dotSuffix = ".".repeat(dots);
     const inputMode = attrs.inputMode || "note";
@@ -2422,7 +2459,7 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
                     "select",
                     {
                       value: attrs.staff,
-                      disabled: attrs.staff === "single" && Number(attrs.singleStaffCount || 1) >= 2,
+                      disabled: attrs.staff === "single" && normalizedSingleStaffCount >= 2,
                       onChange: (event) => updateScoreAttrsFromMenu({ staff: event.target.value }),
                       children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "single", children: "\u5358\u8B5C\u8868" }),
@@ -2431,12 +2468,12 @@ var ScoreNodeView = ({ node, editor, getPos }) => {
                     }
                   )
                 ] }),
-                attrs.staff === "single" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
+                attrs.staff === "single" && allowMultiSingleStaff && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u6BB5\u6570" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                     "select",
                     {
-                      value: String(attrs.singleStaffCount || 1),
+                      value: String(normalizedSingleStaffCount),
                       onChange: (event) => updateScoreAttrsFromMenu({ singleStaffCount: Number(event.target.value) }),
                       children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "1", children: "1\u6BB5" }),
@@ -2479,6 +2516,11 @@ var ScoreExtension = import_core.Node.create({
   atom: true,
   selectable: true,
   draggable: true,
+  addOptions() {
+    return {
+      extraFeatures: defaultScoreExtraFeatures
+    };
+  },
   addAttributes() {
     return {
       timeSig: {
@@ -2689,13 +2731,19 @@ var ScoreExtension = import_core.Node.create({
     };
   },
   addInputRules() {
+    const extraFeatures = resolveScoreExtraFeatures(this.options.extraFeatures);
+    const initialAttrs = {
+      ...defaultScoreAttrs,
+      singleStaffCount: extraFeatures.multiSingleStaff ? defaultScoreAttrs.singleStaffCount : 1,
+      inputDots: extraFeatures.doubleDotted ? defaultScoreAttrs.inputDots : Math.min(1, defaultScoreAttrs.inputDots)
+    };
     return [
       new import_core.InputRule({
         find: /\/score$/,
         handler: ({ range, commands }) => {
           commands.insertContentAt(
             { from: range.from, to: range.to },
-            { type: this.name, attrs: defaultScoreAttrs },
+            { type: this.name, attrs: initialAttrs },
             { updateSelection: false }
           );
         }
@@ -2844,9 +2892,18 @@ var ScoreBubbleMenu = ({ editor }) => {
     };
   }, []);
   if (!editor) return null;
+  const scoreExtension = editor.extensionManager.extensions.find((ext) => ext.name === "score");
+  const extraFeatures = resolveScoreExtraFeatures(scoreExtension?.options?.extraFeatures);
+  const allowDoubleDotted = extraFeatures.doubleDotted;
   const updateAttrs = (next) => {
     editor.commands.updateAttributes("score", next);
   };
+  (0, import_react4.useEffect)(() => {
+    if (!attrs) return;
+    if (allowDoubleDotted) return;
+    if (Number(attrs.inputDots ?? 0) <= 1) return;
+    updateAttrs({ inputDots: 1 });
+  }, [allowDoubleDotted, attrs?.inputDots]);
   const getSelectedTokens = (currentAttrs) => {
     if (!currentAttrs.selectedTarget) return null;
     const source = currentAttrs.selectedTarget === "lower" ? currentAttrs.lowerNotes : currentAttrs.selectedTarget === "upper" ? currentAttrs.upperNotes : currentAttrs.selectedTarget === "single2" ? currentAttrs.singleNotes2 : currentAttrs.selectedTarget === "single3" ? currentAttrs.singleNotes3 : currentAttrs.selectedTarget === "single4" ? currentAttrs.singleNotes4 : currentAttrs.notes;
@@ -2937,12 +2994,17 @@ var ScoreBubbleMenu = ({ editor }) => {
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                   "select",
                   {
-                    value: String(attrs.inputDots),
-                    onChange: (event) => updateAttrs({ inputDots: Number(event.target.value) }),
+                    value: String(allowDoubleDotted ? attrs.inputDots : Math.min(1, Number(attrs.inputDots ?? 0))),
+                    onChange: (event) => updateAttrs({
+                      inputDots: Math.min(
+                        allowDoubleDotted ? 2 : 1,
+                        Number(event.target.value)
+                      )
+                    }),
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "0", children: "\u306A\u3057" }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "1", children: "\u4ED8\u70B9" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "2", children: "\u8907\u4ED8\u70B9" })
+                      allowDoubleDotted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "2", children: "\u8907\u4ED8\u70B9" })
                     ]
                   }
                 )
@@ -2990,7 +3052,7 @@ var ScoreBubbleMenu = ({ editor }) => {
           const mode = restMatch ? "rest" : "note";
           const duration = restMatch?.[1] ?? noteMatch?.[4] ?? attrs.inputDuration;
           const isTuplet = (restMatch?.[2] ?? noteMatch?.[5] ?? "") === "t";
-          const dots = (restMatch?.[3] ?? noteMatch?.[6] ?? "").length;
+          const dots = Math.min(allowDoubleDotted ? 2 : 1, (restMatch?.[3] ?? noteMatch?.[6] ?? "").length);
           const accidental = noteMatch?.[2] ?? "";
           return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "score-bubble__stack", children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "score-bubble__row score-bubble__row--selected-primary", children: [
@@ -3054,7 +3116,7 @@ var ScoreBubbleMenu = ({ editor }) => {
                   {
                     value: String(dots),
                     onChange: (event) => {
-                      const nextDots = Number(event.target.value);
+                      const nextDots = Math.min(allowDoubleDotted ? 2 : 1, Number(event.target.value));
                       const dotSuffix = ".".repeat(nextDots);
                       updateSelectedToken(attrs, (token) => {
                         const note = token.match(/^([a-gA-G])([#b]?)(\d)\/(w|h|q|8|16|32)(t?)(\.{0,2})(~?)$/);
@@ -3067,7 +3129,7 @@ var ScoreBubbleMenu = ({ editor }) => {
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "0", children: "\u306A\u3057" }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "1", children: "\u4ED8\u70B9" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "2", children: "\u8907\u4ED8\u70B9" })
+                      allowDoubleDotted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "2", children: "\u8907\u4ED8\u70B9" })
                     ]
                   }
                 )
